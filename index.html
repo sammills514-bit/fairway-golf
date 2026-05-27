@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Fairway Golf</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- HUD Top Bar -->
+  <div id="hud">
+    <div class="hud-panel">
+      <div class="hud-label">Hole</div>
+      <div class="hud-value" id="hud-hole">1</div>
+    </div>
+    <div class="hud-panel">
+      <div class="hud-label">Par</div>
+      <div class="hud-value" id="hud-par">4</div>
+    </div>
+    <div class="hud-panel">
+      <div class="hud-label">Strokes</div>
+      <div class="hud-value" id="hud-strokes">0</div>
+    </div>
+    <div class="hud-panel">
+      <div class="hud-label">Distance</div>
+      <div class="hud-value" id="hud-dist">290y</div>
+    </div>
+    <div class="hud-panel">
+      <div class="hud-label">Club</div>
+      <div class="hud-value" id="hud-club">Driver</div>
+    </div>
+  </div>
+
+  <!-- Shot message overlay -->
+  <div id="shot-message"></div>
+
+  <!-- Hint text -->
+  <div id="hint">Drag down to set power &nbsp;·&nbsp; Drag left/right to aim</div>
+
+  <!-- Power indicator -->
+  <div id="power-container">
+    <div id="power-label">Power</div>
+    <div id="power-track">
+      <div id="power-fill"></div>
+    </div>
+  </div>
+
+  <!-- Club selector -->
+  <div id="club-selector">
+    <button class="club-btn active" data-club="driver">
+      <span class="club-short">DR</span>
+      <span class="club-name">Driver</span>
+    </button>
+    <button class="club-btn" data-club="iron7">
+      <span class="club-short">7i</span>
+      <span class="club-name">7 Iron</span>
+    </button>
+    <button class="club-btn" data-club="wedge">
+      <span class="club-short">PW</span>
+      <span class="club-name">Wedge</span>
+    </button>
+    <button class="club-btn" data-club="putter">
+      <span class="club-short">PT</span>
+      <span class="club-name">Putter</span>
+    </button>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/clubs.js"></script>
+  <script src="js/course.js"></script>
+  <script src="js/ball.js"></script>
+  <script src="js/controls.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/hud.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
