@@ -172,6 +172,29 @@ body {
   white-space: nowrap;
 }
 
+/* ── Play Again ── */
+#play-again-btn {
+  position: fixed;
+  top: 58%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.95);
+  color: #1a472a;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 36px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 20;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#play-again-btn:active {
+  transform: translateX(-50%) scale(0.96);
+}
+
 /* ── Hint ── */
 #hint {
   position: fixed;

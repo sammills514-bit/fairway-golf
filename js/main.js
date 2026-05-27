@@ -5,6 +5,9 @@
   const S = { IDLE: 'idle', AIMING: 'aiming', FLYING: 'flying', DONE: 'done' };
   let state = S.IDLE;
 
+  // Out-of-bounds boundaries (matches course geometry)
+  const OOB = { minX: -46, maxX: 46, minZ: -315, maxZ: 18 };
+
   let renderer, scene, camera;
   let course, ball, controls, gameCamera, hud;
   let currentClubId = 'driver';
@@ -26,32 +29,26 @@
     camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 1200);
 
     course = new Course(scene);
-
-    ball = new Ball(scene);
+    ball   = new Ball(scene);
     ball.teleport(course.teePosition);
 
     controls   = new Controls(renderer.domElement);
     gameCamera = new GameCamera(camera, ball);
     hud        = new HUD();
 
-    hud.updateStrokes(strokes);
-    hud.updateDistance(course.distanceToHole(ball.position));
-    hud.setClubActive(currentClubId);
+    _refreshHUD();
+    _wireBallCallbacks();
+    _wireClubButtons();
 
-    // Show initial aim line pointing toward hole (yaw = 0)
     ball.setAim(gameCamera.yaw, 0, CLUBS[currentClubId]);
 
-    // ── Controls callbacks ─────────────────────────────────
-
-    // Horizontal swipe → orbit camera around ball
+    // Controls callbacks
     controls.onOrbit = (deltaYaw) => {
       if (state === S.FLYING || state === S.DONE) return;
       gameCamera.yaw += deltaYaw;
-      // Update aim preview direction as camera rotates
       ball.setAim(gameCamera.yaw, 0, CLUBS[currentClubId]);
     };
 
-    // Vertical drag → power charging
     controls.onUpdate = (aimOffset, power, dragging) => {
       if (state === S.FLYING || state === S.DONE) return;
       if (dragging) {
@@ -65,10 +62,8 @@
       }
     };
 
-    // Release after vertical drag → shoot
     controls.onSwing = (aimOffset, power) => {
       if (state === S.FLYING || state === S.DONE) return;
-
       const finalAngle = gameCamera.yaw + aimOffset;
       strokes++;
       hud.updateStrokes(strokes);
@@ -76,43 +71,81 @@
       controls.disable();
       ball.hideAim();
       hud.setPower(0);
-
       ball.shoot(finalAngle, power, CLUBS[currentClubId]);
       gameCamera.startFlight(gameCamera.yaw);
-
       hud.showMessage(Math.round(power * 100) + '% Power', 1000);
     };
 
-    // ── Ball landed ────────────────────────────────────────
+    // Play-again button
+    document.getElementById('play-again-btn').addEventListener('click', _resetGame);
+    document.getElementById('play-again-btn').addEventListener('touchstart', e => {
+      e.stopPropagation();
+      _resetGame();
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    requestAnimationFrame(loop);
+  }
+
+  // ── Ball callbacks (also called on reset) ─────────────────
+  function _wireBallCallbacks() {
     ball.onLanded = (landPos) => {
-      // Camera auto-rotates toward hole from new position
-      gameCamera.ballLanded(landPos, course.holePosition);
+      const oob = _isOOB(landPos);
 
-      const dist = course.distanceToHole(landPos);
-      hud.updateDistance(dist);
+      if (oob) {
+        // Penalty stroke + drop at nearest safe point
+        strokes++;
+        hud.updateStrokes(strokes);
+        hud.showMessage('Out of Bounds! +1 Penalty', 2500);
 
-      if (dist <= course.holeRadius + 0.4) {
-        state = S.DONE;
+        const drop = _dropZone(landPos);
+        ball.teleport(drop);
+        gameCamera.ballLanded(drop, course.holePosition);
+        hud.updateDistance(course.distanceToHole(drop));
+
         setTimeout(() => {
-          hud.showMessage('Hole Out! ' + strokes + ' — ' + _scoreLabel(strokes), 6000);
-        }, 600);
+          state = S.IDLE;
+          controls.enable();
+          ball.setAim(gameCamera.yaw, 0, CLUBS[currentClubId]);
+        }, 900);
         return;
       }
 
-      if      (dist < 2)                   hud.showMessage('Tap-in!',       2000);
-      else if (dist < 5)                   hud.showMessage('Gimme!',        2000);
-      else if (dist < 12)                  hud.showMessage('Close!',        2000);
-      else if (dist < course.greenRadius)  hud.showMessage('On the Green',  1600);
+      gameCamera.ballLanded(landPos, course.holePosition);
+      const dist = course.distanceToHole(landPos);
+      hud.updateDistance(dist);
+
+      // Hole-out
+      if (dist <= course.holeRadius + 0.4) {
+        state = S.DONE;
+        setTimeout(() => {
+          hud.showMessage('Hole Out! ' + strokes + ' strokes — ' + _scoreLabel(strokes), 5000);
+          document.getElementById('play-again-btn').style.display = 'block';
+        }, 700);
+        return;
+      }
+
+      // Proximity feedback
+      if      (dist < 2)                  hud.showMessage('Tap-in!',      2000);
+      else if (dist < 5)                  hud.showMessage('Gimme!',       2000);
+      else if (dist < 12)                 hud.showMessage('Close!',       2000);
+      else if (dist < course.greenRadius) hud.showMessage('On the Green', 1600);
 
       setTimeout(() => {
         state = S.IDLE;
         controls.enable();
-        // Show aim line in new direction once camera has settled
         ball.setAim(gameCamera.yaw, 0, CLUBS[currentClubId]);
-      }, 600);
+      }, 500);
     };
+  }
 
-    // ── Club buttons ───────────────────────────────────────
+  // ── Club buttons ───────────────────────────────────────────
+  function _wireClubButtons() {
     document.querySelectorAll('.club-btn').forEach(btn => {
       ['click', 'touchstart'].forEach(evt => {
         btn.addEventListener(evt, e => {
@@ -127,14 +160,28 @@
         });
       });
     });
+  }
 
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+  // ── Reset game ─────────────────────────────────────────────
+  function _resetGame() {
+    document.getElementById('play-again-btn').style.display = 'none';
+    strokes = 0;
+    currentClubId = 'driver';
+    state = S.IDLE;
 
-    requestAnimationFrame(loop);
+    ball.inFlight  = false;
+    ball.isRolling = false;
+    ball.flightData = null;
+    ball.rollData   = null;
+    ball.teleport(course.teePosition);
+
+    gameCamera.yaw  = 0;
+    gameCamera.mode = 'setup';
+
+    controls.enable();
+    _refreshHUD();
+    _wireBallCallbacks(); // re-register since closures capture strokes
+    ball.setAim(gameCamera.yaw, 0, CLUBS[currentClubId]);
   }
 
   // ── Game loop ──────────────────────────────────────────────
@@ -147,7 +194,6 @@
     gameCamera.update(dt);
     course.animateFlag();
 
-    // Keep aim line in sync with camera yaw during idle/setup
     if (state === S.IDLE && gameCamera.mode === 'setup') {
       ball.setAim(gameCamera.yaw, 0, CLUBS[currentClubId]);
     }
@@ -156,6 +202,28 @@
   }
 
   // ── Helpers ────────────────────────────────────────────────
+  function _isOOB(pos) {
+    return pos.x < OOB.minX || pos.x > OOB.maxX
+        || pos.z < OOB.minZ || pos.z > OOB.maxZ;
+  }
+
+  function _dropZone(pos) {
+    // Clamp to fairway, keep z unchanged (unless also out past green / behind tee)
+    return new THREE.Vector3(
+      Math.max(-17, Math.min(17, pos.x)),
+      0.05,
+      Math.max(-285, Math.min(-5, pos.z)),
+    );
+  }
+
+  function _refreshHUD() {
+    hud.updateStrokes(strokes);
+    hud.updateDistance(course.distanceToHole(ball.position));
+    hud.setClubActive(currentClubId);
+    hud.updateClub(CLUBS[currentClubId].name);
+    hud.setPower(0);
+  }
+
   function _scoreLabel(n) {
     const d = n - 4;
     if (d <= -3) return 'Albatross!';

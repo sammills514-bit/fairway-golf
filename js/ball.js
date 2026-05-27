@@ -130,6 +130,8 @@ class Ball {
       totalTime: (2 * vy) / G,
       maxHeight: (vy * vy) / (2 * G),
       elapsed:   0,
+      power,          // stored for roll calculation
+      club,           // stored for rollFactor lookup
     };
 
     this.inFlight = true;
@@ -172,16 +174,18 @@ class Ball {
   _startRoll(x, z, fd) {
     const vH = Math.sqrt(fd.vx * fd.vx + fd.vz * fd.vz);
 
-    if (vH < 0.5) {
-      // Negligible horizontal speed — stop immediately
+    // Roll distance is proportional to power × club type, capped at 22 units
+    const rollDist = Math.min(fd.power * fd.club.maxDistance * fd.club.rollFactor, 22);
+
+    if (rollDist < 0.3 || vH < 0.1) {
       this._land(x, z);
       return;
     }
 
-    const rollDist = Math.min(vH * 0.055, 12);
-    const rollTime = 0.45 + rollDist * 0.04;
     const dirX = fd.vx / vH;
     const dirZ = fd.vz / vH;
+    // Duration scales with distance so the deceleration rate feels consistent
+    const rollTime = 0.7 + rollDist * 0.055;
 
     this.isRolling = true;
     this.rollData  = {
@@ -192,9 +196,8 @@ class Ball {
       distance: rollDist,
       duration: rollTime,
       elapsed:  0,
-      // Spin axis = perpendicular to travel direction in XZ plane
+      // Spin axis perpendicular to travel direction in XZ plane
       spinAxis: new THREE.Vector3(-dirZ, 0, dirX).normalize(),
-      spinSpeed: vH * 4.5,
     };
 
     this.shadowDisc.material.opacity = 0.22;
@@ -205,7 +208,7 @@ class Ball {
     rd.elapsed += dt;
     const t = Math.min(rd.elapsed / rd.duration, 1);
 
-    // Ease-out deceleration (quadratic)
+    // Quadratic ease-out: fast start, smooth stop
     const progress = 1 - Math.pow(1 - t, 2);
 
     const cx = rd.startX + rd.dirX * rd.distance * progress;
@@ -214,9 +217,13 @@ class Ball {
     this.mesh.position.set(cx, 0.22, cz);
     this.shadowDisc.position.set(cx, 0.011, cz);
 
-    // Decreasing spin as ball slows
-    const spinFactor = 1 - t;
-    this.mesh.rotateOnWorldAxis(rd.spinAxis, -dt * rd.spinSpeed * spinFactor);
+    // Linear speed = derivative of position with respect to time
+    // For ease-out quadratic: progress' = 2*(1-t)/duration
+    // linearSpeed = distance * 2*(1-t) / duration
+    const linearSpeed = (rd.distance * 2 * (1 - t)) / rd.duration;
+    // Angular velocity from rolling-without-slipping: ω = v / r
+    const angularVel = linearSpeed / 0.22;
+    this.mesh.rotateOnWorldAxis(rd.spinAxis, -dt * angularVel);
 
     if (rd.elapsed >= rd.duration) {
       this.isRolling = false;
