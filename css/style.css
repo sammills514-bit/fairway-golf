@@ -172,6 +172,19 @@ body {
   white-space: nowrap;
 }
 
+/* ── Version badge ── */
+#version {
+  position: fixed;
+  bottom: 6px;
+  right: 8px;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 10px;
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 10;
+  letter-spacing: 0.5px;
+}
+
 /* ── Play Again ── */
 #play-again-btn {
   position: fixed;

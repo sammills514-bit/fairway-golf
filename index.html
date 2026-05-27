@@ -78,6 +78,9 @@
     </button>
   </div>
 
+  <!-- Version badge — bump this string with every push -->
+  <div id="version">v3</div>
+
   <canvas id="game-canvas"></canvas>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -90,6 +93,12 @@
   <script src="js/main.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
+      // Auto-reload the page when a new service worker activates,
+      // so updated game code is picked up immediately.
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!reloading) { reloading = true; window.location.reload(); }
+      });
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
   </script>
