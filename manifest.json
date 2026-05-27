@@ -1,0 +1,18 @@
+{
+  "name": "Fairway Golf",
+  "short_name": "Fairway",
+  "description": "3D golf game — playable in browser",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1a472a",
+  "theme_color": "#1a472a",
+  "orientation": "landscape-primary",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

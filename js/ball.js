@@ -1,12 +1,14 @@
-// Ball mesh, physics simulation, aim visualisation
+// Ball mesh, physics simulation, aim visualisation, roll-out
 class Ball {
   constructor(scene) {
-    this.scene = scene;
-    this.position = new THREE.Vector3(0, 0.05, 0);
+    this.scene     = scene;
+    this.position  = new THREE.Vector3(0, 0.05, 0);
     this.inFlight  = false;
+    this.isRolling = false;
     this.flightData = null;
+    this.rollData   = null;
 
-    this.onLanded = null; // callback(landPos)
+    this.onLanded = null; // callback(landPos) — fires after roll-out completes
 
     this._buildBall();
     this._buildShadow();
@@ -39,7 +41,6 @@ class Ball {
   }
 
   _buildAimLine() {
-    // 2-point line updated each frame during aiming
     const buf = new Float32Array(6);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
@@ -55,12 +56,11 @@ class Ball {
   }
 
   _buildLandingRing() {
-    // Shows predicted landing zone while aiming
-    const geo = new THREE.RingGeometry(0.6, 1.1, 20);
+    const geo = new THREE.RingGeometry(0.7, 1.2, 24);
     const mat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.4,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -71,33 +71,31 @@ class Ball {
   }
 
   // ── Aim visualisation ──────────────────────────────────────
+  // power = 0 shows direction-only line; power > 0 also shows landing ring
   setAim(aimAngle, power, club) {
-    this.aimLine.visible   = true;
-    this.landingRing.visible = true;
+    this.aimLine.visible = true;
 
-    const lineLen = 3 + power * 14;
     const sin = Math.sin(aimAngle);
     const cos = Math.cos(aimAngle);
-
-    const sx = this.position.x;
-    const sy = this.position.y + 0.25;
-    const sz = this.position.z;
-    const ex = sx + sin * lineLen;
-    const ey = sy;
-    const ez = sz - cos * lineLen;
+    const lineLen = power > 0 ? (3 + power * 14) : 7;
 
     const pos = this.aimLine.geometry.attributes.position;
-    pos.array[0] = sx; pos.array[1] = sy; pos.array[2] = sz;
-    pos.array[3] = ex; pos.array[4] = ey; pos.array[5] = ez;
+    const sx = this.position.x, sy = this.position.y + 0.25, sz = this.position.z;
+    pos.array[0] = sx;             pos.array[1] = sy; pos.array[2] = sz;
+    pos.array[3] = sx + sin * lineLen; pos.array[4] = sy; pos.array[5] = sz - cos * lineLen;
     pos.needsUpdate = true;
 
-    // Landing ring at predicted spot (no spread applied here, just for guidance)
-    const dist = power * club.maxDistance;
-    this.landingRing.position.set(
-      this.position.x + sin * dist,
-      0.013,
-      this.position.z - cos * dist,
-    );
+    if (power > 0) {
+      const dist = power * club.maxDistance;
+      this.landingRing.visible = true;
+      this.landingRing.position.set(
+        this.position.x + sin * dist,
+        0.013,
+        this.position.z - cos * dist,
+      );
+    } else {
+      this.landingRing.visible = false;
+    }
   }
 
   hideAim() {
@@ -107,17 +105,16 @@ class Ball {
 
   // ── Fire a shot ────────────────────────────────────────────
   shoot(aimAngle, power, club) {
-    if (this.inFlight) return;
+    if (this.inFlight || this.isRolling) return;
 
     const G       = 9.8;
     const theta   = club.launchAngle * Math.PI / 180;
     const dist    = power * club.maxDistance;
 
-    // Random lateral spread (less accurate at low power)
+    // Random spread (inaccuracy)
     const spread    = (Math.random() - 0.5) * 2 * club.spread * dist;
-    const spreadAng = aimAngle + Math.atan2(spread, dist);
+    const finalAng  = aimAngle + Math.atan2(spread, Math.max(dist, 0.1));
 
-    // v0 from range formula: R = v0² · sin(2θ) / g
     const sin2theta = Math.sin(2 * theta);
     const v0 = Math.sqrt((dist * G) / Math.max(sin2theta, 0.001));
 
@@ -126,9 +123,9 @@ class Ball {
 
     this.flightData = {
       startPos:  this.position.clone(),
-      vx:        Math.sin(spreadAng) * vH,
+      vx:        Math.sin(finalAng) * vH,
       vy,
-      vz:       -Math.cos(spreadAng) * vH,
+      vz:       -Math.cos(finalAng) * vH,
       g:         G,
       totalTime: (2 * vy) / G,
       maxHeight: (vy * vy) / (2 * G),
@@ -141,13 +138,15 @@ class Ball {
 
   // ── Per-frame update ───────────────────────────────────────
   update(dt) {
-    if (!this.inFlight) {
-      // Keep shadow under ball while idle
-      this.shadowDisc.position.x = this.position.x;
-      this.shadowDisc.position.z = this.position.z;
-      return;
-    }
+    if (this.inFlight)  { this._updateFlight(dt); return; }
+    if (this.isRolling) { this._updateRoll(dt);   return; }
 
+    // Idle: keep shadow under ball
+    this.shadowDisc.position.x = this.position.x;
+    this.shadowDisc.position.z = this.position.z;
+  }
+
+  _updateFlight(dt) {
     const fd = this.flightData;
     fd.elapsed = Math.min(fd.elapsed + dt, fd.totalTime);
     const t = fd.elapsed;
@@ -157,25 +156,81 @@ class Ball {
     const z = fd.startPos.z + fd.vz * t;
 
     if (fd.elapsed >= fd.totalTime) {
-      // Land
-      this.position.set(x, 0.05, z);
-      this.mesh.position.set(x, 0.22, z);
-      this.shadowDisc.position.set(x, 0.011, z);
-      this.shadowDisc.material.opacity = 0.22;
+      // Transition to roll-out
       this.inFlight = false;
+      this._startRoll(x, z, fd);
       this.flightData = null;
-      if (this.onLanded) this.onLanded(this.position.clone());
     } else {
       this.mesh.position.set(x, Math.max(y, 0.22), z);
       this.shadowDisc.position.set(x, 0.011, z);
-
-      // Fade shadow as ball rises
-      const heightRatio = Math.max(0, y) / Math.max(fd.maxHeight, 0.1);
-      this.shadowDisc.material.opacity = 0.22 * (1 - heightRatio * 0.65);
-
-      // Spin ball during flight
+      const hr = Math.max(0, y) / Math.max(fd.maxHeight, 0.1);
+      this.shadowDisc.material.opacity = 0.22 * (1 - hr * 0.65);
       this.mesh.rotation.x -= dt * 9;
     }
+  }
+
+  _startRoll(x, z, fd) {
+    const vH = Math.sqrt(fd.vx * fd.vx + fd.vz * fd.vz);
+
+    if (vH < 0.5) {
+      // Negligible horizontal speed — stop immediately
+      this._land(x, z);
+      return;
+    }
+
+    const rollDist = Math.min(vH * 0.055, 12);
+    const rollTime = 0.45 + rollDist * 0.04;
+    const dirX = fd.vx / vH;
+    const dirZ = fd.vz / vH;
+
+    this.isRolling = true;
+    this.rollData  = {
+      startX: x,
+      startZ: z,
+      dirX,
+      dirZ,
+      distance: rollDist,
+      duration: rollTime,
+      elapsed:  0,
+      // Spin axis = perpendicular to travel direction in XZ plane
+      spinAxis: new THREE.Vector3(-dirZ, 0, dirX).normalize(),
+      spinSpeed: vH * 4.5,
+    };
+
+    this.shadowDisc.material.opacity = 0.22;
+  }
+
+  _updateRoll(dt) {
+    const rd = this.rollData;
+    rd.elapsed += dt;
+    const t = Math.min(rd.elapsed / rd.duration, 1);
+
+    // Ease-out deceleration (quadratic)
+    const progress = 1 - Math.pow(1 - t, 2);
+
+    const cx = rd.startX + rd.dirX * rd.distance * progress;
+    const cz = rd.startZ + rd.dirZ * rd.distance * progress;
+
+    this.mesh.position.set(cx, 0.22, cz);
+    this.shadowDisc.position.set(cx, 0.011, cz);
+
+    // Decreasing spin as ball slows
+    const spinFactor = 1 - t;
+    this.mesh.rotateOnWorldAxis(rd.spinAxis, -dt * rd.spinSpeed * spinFactor);
+
+    if (rd.elapsed >= rd.duration) {
+      this.isRolling = false;
+      this.rollData  = null;
+      this._land(cx, cz);
+    }
+  }
+
+  _land(x, z) {
+    this.position.set(x, 0.05, z);
+    this.mesh.position.set(x, 0.22, z);
+    this.shadowDisc.position.set(x, 0.011, z);
+    this.shadowDisc.material.opacity = 0.22;
+    if (this.onLanded) this.onLanded(this.position.clone());
   }
 
   teleport(pos) {

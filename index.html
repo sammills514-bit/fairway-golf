@@ -4,6 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Fairway Golf</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fairway">
+  <meta name="theme-color" content="#1a472a">
+  <link rel="apple-touch-icon" href="icon.svg">
+
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -36,7 +45,7 @@
   <div id="shot-message"></div>
 
   <!-- Hint text -->
-  <div id="hint">Drag down to set power &nbsp;·&nbsp; Drag left/right to aim</div>
+  <div id="hint">Swipe left/right to aim &nbsp;·&nbsp; Drag down to shoot</div>
 
   <!-- Power indicator -->
   <div id="power-container">
@@ -76,5 +85,10 @@
   <script src="js/camera.js"></script>
   <script src="js/hud.js"></script>
   <script src="js/main.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>

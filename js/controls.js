@@ -1,91 +1,119 @@
-// Touch / mouse drag controls — no Three.js dependency
+// Touch / mouse drag controls — orbit vs shot gesture classification
 class Controls {
   constructor(canvas) {
     this.canvas  = canvas;
     this.enabled = true;
-    this._active = false;
-    this._start  = null;
-    this._cur    = null;
 
-    this.aimAngle = 0;  // radians
-    this.power    = 0;  // 0–1
+    this._mode   = null;   // null | 'orbit' | 'shot'
+    this._startX = 0;
+    this._startY = 0;
+    this._prevX  = 0;      // for per-frame orbit delta
+    this._curX   = 0;
+    this._curY   = 0;
 
-    // Callbacks set by main.js
-    this.onUpdate = null; // (aimAngle, power, dragging) => void
-    this.onSwing  = null; // (aimAngle, power) => void
+    this.power     = 0;
+    this.aimOffset = 0;
+
+    // Callbacks assigned by main.js
+    this.onOrbit  = null;  // (deltaYaw) incremental, called while orbiting
+    this.onUpdate = null;  // (aimOffset, power, dragging) called while in shot mode
+    this.onSwing  = null;  // (aimOffset, power) fired on release
 
     this._bind();
   }
 
   _bind() {
     const c = this.canvas;
-    c.addEventListener('mousedown',  e => this._start_(e.clientX, e.clientY));
-    c.addEventListener('mousemove',  e => this._move_(e.clientX, e.clientY));
-    c.addEventListener('mouseup',    () => this._end_());
-    c.addEventListener('mouseleave', () => this._cancel_());
+    c.addEventListener('mousedown',  e => this._down(e.clientX, e.clientY));
+    c.addEventListener('mousemove',  e => this._move(e.clientX, e.clientY));
+    c.addEventListener('mouseup',    () => this._up());
+    c.addEventListener('mouseleave', () => this._cancel());
 
     c.addEventListener('touchstart', e => {
       e.preventDefault();
-      this._start_(e.touches[0].clientX, e.touches[0].clientY);
+      this._down(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: false });
     c.addEventListener('touchmove', e => {
       e.preventDefault();
-      this._move_(e.touches[0].clientX, e.touches[0].clientY);
+      this._move(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: false });
-    c.addEventListener('touchend',   e => { e.preventDefault(); this._end_();    }, { passive: false });
-    c.addEventListener('touchcancel',e => { e.preventDefault(); this._cancel_(); }, { passive: false });
+    c.addEventListener('touchend',    e => { e.preventDefault(); this._up();     }, { passive: false });
+    c.addEventListener('touchcancel', e => { e.preventDefault(); this._cancel(); }, { passive: false });
   }
 
-  _start_(x, y) {
+  _down(x, y) {
     if (!this.enabled) return;
-    this._active = true;
-    this._start  = { x, y };
-    this._cur    = { x, y };
-    this.aimAngle = 0;
-    this.power    = 0;
+    this._mode   = null;
+    this._startX = x;
+    this._startY = y;
+    this._prevX  = x;
+    this._curX   = x;
+    this._curY   = y;
+    this.power     = 0;
+    this.aimOffset = 0;
   }
 
-  _move_(x, y) {
-    if (!this._active || !this.enabled) return;
-    this._cur = { x, y };
-    this._compute();
-    if (this.onUpdate) this.onUpdate(this.aimAngle, this.power, true);
-  }
+  _move(x, y) {
+    if (!this.enabled || (this._startX === 0 && this._startY === 0)) return;
 
-  _end_() {
-    if (!this._active || !this.enabled) return;
-    this._active = false;
-    if (this.power > 0.04 && this.onSwing) {
-      this.onSwing(this.aimAngle, this.power);
-    } else {
-      if (this.onUpdate) this.onUpdate(0, 0, false);
+    const dx  = x - this._startX;
+    const dy  = y - this._startY;
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+
+    // Classify gesture once we've moved far enough
+    if (this._mode === null) {
+      if (Math.sqrt(dx * dx + dy * dy) < 18) return;
+      if (adx >= ady)          this._mode = 'orbit';
+      else if (dy > 0)         this._mode = 'shot';
+      else                     return; // upward swipe, ignore
     }
-    this.power    = 0;
-    this.aimAngle = 0;
+
+    if (this._mode === 'orbit') {
+      const deltaYaw = (x - this._prevX) * (Math.PI / 350);
+      this._prevX = x;
+      if (this.onOrbit) this.onOrbit(deltaYaw);
+
+    } else if (this._mode === 'shot') {
+      this._curX = x;
+      this._curY = y;
+
+      const maxPowerPx = Math.min(window.innerHeight * 0.45, 300);
+      this.power = Math.max(0, Math.min(1, dy / maxPowerPx));
+
+      const maxAimPx = window.innerWidth * 0.35;
+      const frac     = Math.max(-1, Math.min(1, dx / maxAimPx));
+      this.aimOffset = frac * (Math.PI / 9); // max ±20°
+
+      if (this.onUpdate) this.onUpdate(this.aimOffset, this.power, true);
+    }
   }
 
-  _cancel_() {
-    if (!this._active) return;
-    this._active = false;
-    this.power    = 0;
-    this.aimAngle = 0;
-    if (this.onUpdate) this.onUpdate(0, 0, false);
+  _up() {
+    if (!this.enabled) return;
+    if (this._mode === 'shot') {
+      if (this.power > 0.04 && this.onSwing) {
+        this.onSwing(this.aimOffset, this.power);
+      } else {
+        if (this.onUpdate) this.onUpdate(0, 0, false);
+      }
+    }
+    this._reset();
   }
 
-  _compute() {
-    const dx = this._cur.x - this._start.x;
-    const dy = this._cur.y - this._start.y;
-
-    // Drag downward (dy > 0) = pulling back = power
-    const maxPowerPx = Math.min(window.innerHeight * 0.38, 220);
-    this.power = Math.max(0, Math.min(1, dy / maxPowerPx));
-
-    // Horizontal drag = aim angle, max ±45°
-    const maxAimPx = window.innerWidth * 0.22;
-    const fraction = Math.max(-1, Math.min(1, dx / maxAimPx));
-    this.aimAngle  = fraction * (Math.PI / 4);
+  _cancel() {
+    if (this._mode === 'shot' && this.onUpdate) this.onUpdate(0, 0, false);
+    this._reset();
   }
 
-  enable()  { this.enabled = true;  }
-  disable() { this.enabled = false; this._cancel_(); }
+  _reset() {
+    this._mode     = null;
+    this._startX   = 0;
+    this._startY   = 0;
+    this.power     = 0;
+    this.aimOffset = 0;
+  }
+
+  enable()  { this.enabled = true; }
+  disable() { this.enabled = false; this._cancel(); }
 }
