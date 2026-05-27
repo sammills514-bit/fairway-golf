@@ -78,8 +78,8 @@
     </button>
   </div>
 
-  <!-- Version badge — bump this string with every push -->
-  <div id="version">v3</div>
+  <!-- Version badge — tap to force-update -->
+  <div id="version">↻ v3</div>
 
   <canvas id="game-canvas"></canvas>
 
@@ -92,15 +92,36 @@
   <script src="js/hud.js"></script>
   <script src="js/main.js"></script>
   <script>
+    // ── Service worker + update logic ──────────────────────
+    let swReg = null;
+    let reloading = false;
+
     if ('serviceWorker' in navigator) {
-      // Auto-reload the page when a new service worker activates,
-      // so updated game code is picked up immediately.
-      let reloading = false;
+      // Auto-reload when a new SW activates (picks up pushed changes)
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!reloading) { reloading = true; window.location.reload(); }
       });
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => { swReg = reg; })
+        .catch(() => {});
     }
+
+    // Version badge: tap to force a SW update check + hard reload
+    document.getElementById('version').addEventListener('click', () => {
+      const badge = document.getElementById('version');
+      badge.textContent = '↻ checking…';
+      if (swReg) {
+        swReg.update()          // ask SW to re-fetch sw.js from network
+          .then(() => {
+            // If SW didn't change, just do a hard reload anyway
+            setTimeout(() => window.location.reload(), 400);
+          })
+          .catch(() => window.location.reload());
+      } else {
+        window.location.reload();
+      }
+    });
   </script>
 </body>
 </html>
