@@ -129,7 +129,7 @@
     function closeMenu() { overlay.style.display = 'none'; }
 
     menuBtn.addEventListener('click',  openMenu);
-    menuBtn.addEventListener('touchstart', e => { e.stopPropagation(); openMenu(); });
+    menuBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); openMenu(); });
 
     closeBtn.addEventListener('click', closeMenu);
     overlay.addEventListener('click', e => { if (e.target === overlay) closeMenu(); });
