@@ -162,6 +162,8 @@
     });
   }
 
+  window.gameReset = _resetGame;
+
   // ── Reset game ─────────────────────────────────────────────
   function _resetGame() {
     document.getElementById('play-again-btn').style.display = 'none';

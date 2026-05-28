@@ -78,8 +78,21 @@
     </button>
   </div>
 
-  <!-- Version badge — tap to force-update -->
-  <div id="version">↻ v3</div>
+  <!-- Menu trigger -->
+  <button id="menu-btn" aria-label="Menu">&#9776;</button>
+
+  <!-- Menu overlay + panel -->
+  <div id="menu-overlay">
+    <div id="menu-panel">
+      <div id="menu-title">&#9971; Fairway Golf</div>
+      <div id="menu-version">v4</div>
+      <div id="menu-divider"></div>
+      <button class="menu-item" id="menu-update">&#8635; Check for Update</button>
+      <button class="menu-item" id="menu-newgame">&#9654; New Game</button>
+      <div id="menu-divider"></div>
+      <button class="menu-item" id="menu-close">&#10005; Close</button>
+    </div>
+  </div>
 
   <canvas id="game-canvas"></canvas>
 
@@ -92,35 +105,52 @@
   <script src="js/hud.js"></script>
   <script src="js/main.js"></script>
   <script>
-    // ── Service worker + update logic ──────────────────────
+    // ── Service worker ─────────────────────────────────────
     let swReg = null;
     let reloading = false;
 
     if ('serviceWorker' in navigator) {
-      // Auto-reload when a new SW activates (picks up pushed changes)
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!reloading) { reloading = true; window.location.reload(); }
       });
-
       navigator.serviceWorker.register('./sw.js')
         .then(reg => { swReg = reg; })
         .catch(() => {});
     }
 
-    // Version badge: tap to force a SW update check + hard reload
-    document.getElementById('version').addEventListener('click', () => {
-      const badge = document.getElementById('version');
-      badge.textContent = '↻ checking…';
-      if (swReg) {
-        swReg.update()          // ask SW to re-fetch sw.js from network
-          .then(() => {
-            // If SW didn't change, just do a hard reload anyway
-            setTimeout(() => window.location.reload(), 400);
-          })
-          .catch(() => window.location.reload());
-      } else {
-        window.location.reload();
-      }
+    // ── Menu ───────────────────────────────────────────────
+    const overlay  = document.getElementById('menu-overlay');
+    const menuBtn  = document.getElementById('menu-btn');
+    const updateBtn = document.getElementById('menu-update');
+    const newGameBtn = document.getElementById('menu-newgame');
+    const closeBtn  = document.getElementById('menu-close');
+
+    function openMenu()  { overlay.style.display = 'flex'; }
+    function closeMenu() { overlay.style.display = 'none'; }
+
+    menuBtn.addEventListener('click',  openMenu);
+    menuBtn.addEventListener('touchstart', e => { e.stopPropagation(); openMenu(); });
+
+    closeBtn.addEventListener('click', closeMenu);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeMenu(); });
+
+    updateBtn.addEventListener('click', () => {
+      updateBtn.textContent = '↻ Checking…';
+      updateBtn.disabled = true;
+      const finish = () => setTimeout(() => window.location.reload(), 400);
+      if (swReg) swReg.update().then(finish).catch(finish);
+      else finish();
+    });
+
+    newGameBtn.addEventListener('click', () => {
+      closeMenu();
+      if (window.gameReset) window.gameReset();
+    });
+
+    // Stop menu button triggering canvas drag
+    ['touchstart','touchend','touchmove'].forEach(evt => {
+      menuBtn.addEventListener(evt, e => e.stopPropagation());
+      overlay.addEventListener(evt, e => e.stopPropagation());
     });
   </script>
 </body>
