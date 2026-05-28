@@ -19,7 +19,7 @@ class Ball {
   // ── Geometry ───────────────────────────────────────────────
   _buildBall() {
     const geo = new THREE.SphereGeometry(0.22, 20, 14);
-    const mat = new THREE.MeshLambertMaterial({ color: 0xfafafa });
+    const mat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.28, metalness: 0.04 });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.castShadow = true;
     this.mesh.position.copy(this.position);
